@@ -1,0 +1,79 @@
+from bs4 import BeautifulSoup, NavigableString, Tag
+import requests
+from lxml import html
+from dateutil.parser import parse
+import json
+import glob
+import os
+import errno
+import sys
+
+#extract description string from its xml/html element
+def clean_description(input):
+    output=[]
+    soup = BeautifulSoup(input, "lxml")
+    for br in soup.findAll('br'):
+        next_s = br.nextSibling
+        if not (next_s and isinstance(next_s,NavigableString)):
+            continue
+        next2_s = next_s.nextSibling
+        if next2_s and isinstance(next2_s,Tag) and next2_s.name == 'br':
+            text = str(next_s).replace('\n', ' ')
+            if text:
+                output.append(text)
+    #construct the output description string
+    str_description = "".join(output)
+    return str_description
+
+#convert .html file to python dict
+def convert_html2dict(inputFileAbsolutePath):
+    filename_value = "ufo_reports_" + file_name.replace(inputFolder, "")
+    try:
+        with open(inputFileAbsolutePath) as fp:
+            soup = BeautifulSoup(fp, "html.parser")
+        fp.close()
+    except:
+        print("The file cannot be found or be parsered.")
+    else:    
+        result = {}
+        result['File_Name'] = filename_value #add file name into result
+        for i, row in enumerate(soup.findAll("tr")):
+            if i == 0:
+                result['Title'] = row.text.replace('\n', ' ').strip() #add title into result
+            if i == 1:
+                content = {}
+                detail = row.find("font")
+                output = detail.contents[0::2]
+                for each in output:
+                    if (':' in each.strip()):
+                        content[each.split(":",1)[0].strip()] = each.split(":",1)[1].strip()
+                result['Content'] = content #add content into result as a dictionary with different kinds of info
+            if i == 2:
+                list_description = str(row.find("font"))
+                result['Description'] = clean_description(list_description) #add description into result
+    return result
+
+
+#transform single .html file to json
+def transform_html2json(inputFileAbsolutePath):
+    return json.dumps(convert_html2dict(inputFileAbsolutePath))
+
+#define the input folder
+inputFolder = '/home/green/Documents/practise/input/'
+outputFolder = '/home/green/Documents/practise/output/'
+
+#iterate input folder, get .html file, extract contents and transform to json 
+for file_name in glob.glob(inputFolder + '*.html'):
+    print()
+    try:
+        output_file = open(file_name.replace(inputFolder, outputFolder).replace('.html', '.json'), 'w')
+        try:
+            output_file.write(transform_html2json(file_name))
+        except:
+            print('Failed: ' + output_file)
+        finally:
+            output_file.close()
+            
+    except IOError as exc:
+        if exc.errno != errno.EISDIR: # Do not fail if a directory is found, just ignore it.
+            raise # Propagate other kinds of IOError.
